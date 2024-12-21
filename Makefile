@@ -1,15 +1,15 @@
 -include config.mk
 
-PROXY        = stonia
-LDFLAGS 	= -mdll -Wl,--enable-stdcall-fixup -Wl,--strip-all -Wl,--exclude-all-symbols
+TARGET       = peon2k.w2p
+LDFLAGS 	=  -Wl,--enable-stdcall-fixup -s -shared -static
 NFLAGS       = -f elf -Iinc/
-CC            = gcc
-CFLAGS       = -std=c99 -Iinc/
-CPPFLAGS       = -masm=intel -Iinc/ -Os -mtune=i586
+CC           =  mingw32-gcc
+CFLAGS       = -Iinc -O2 -march=i486 -Wall -masm=intel -Wno-pointer-sign 
+CXXFLAGS     = -Iinc -O2 -march=i486 -Wall -masm=intel
+LIBS         = 
 
-
-OBJS = w2p.o
-       
+OBJS = peon2k.o
+        
 NASM        ?= nasm
 
 .PHONY: default
@@ -17,8 +17,8 @@ NASM        ?= nasm
 %.o: %.asm
 	$(NASM) $(NFLAGS) -o $@ $<
 
-$(PROXY).w2p: $(OBJS) modexp.def
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++ -static
+$(TARGET): $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	$(RM) $(OBJS) $(PROXY).w2p
+	$(RM) $(OBJS) $(TARGET)
