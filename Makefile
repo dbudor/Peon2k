@@ -8,7 +8,7 @@ CFLAGS       = -Iinc -O2 -march=i486 -Wall -masm=intel -Wno-pointer-sign
 CXXFLAGS     = -Iinc -O2 -march=i486 -Wall -masm=intel
 LIBS         = 
 
-OBJS = peon2k.o
+OBJS = peon2k.o place_check.o
         
 NASM        ?= nasm
 
