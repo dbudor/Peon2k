@@ -6,6 +6,8 @@
 #include "names.h"  //some constants
 #include "patch.h"  //Fois patcher
 
+void hook(int adr, PROC *p, char *func) { *p = patch_call((char *)adr, func); }
+
 byte rune_owners[48];
 
 void bullet_create(WORD x, WORD y, byte id) {
@@ -150,28 +152,29 @@ void patch_unholy() {
 }
 
 #define KILL_COUNT 0x004AD328
-void inc_kills(int player, int *u) {
+int inc_kills(int player, int *u) {
+  player &= 0xff;
   byte id = *((byte *)((uintptr_t)u + S_ID));
   if (id != U_CRITTER) {
-    ((short *)KILL_COUNT)[player & 0xff]++;
+    ((short *)KILL_COUNT)[player]++;
   }
+  return player;
 }
 
 void patch_critter_kills() {
-  char o1[] = "\x51\x50\x90\x90\x90\x90\x90\x58\x59\x90\x90\x90\x90";
+  char o1[] = "\x51\x50\x90\x90\x90\x90\x90\x66\x83\xc4\x08\x90\x90";
   PATCH_SET((char *)0x0043D773, o1);
   patch_call((char *)0x0043D775, (char *)inc_kills);
 }
 
-typedef int (__cdecl *place_callback)(int *); 
+typedef int(__cdecl *place_callback)(int *);
 #define PLACE_UNIT_POSITION 0x00443A40
 extern int new_exit_pos(int *, int, int, int, place_callback);
 
-
 int place_unit_position(int *pos, int size, int target, int steps,
-           place_callback callback) {
+                        place_callback callback) {
   if (*pos == target) {
-    return ((int(*)(int *, int, int, int, place_callback))PLACE_UNIT_POSITION)(
+    return ((int (*)(int *, int, int, int, place_callback))PLACE_UNIT_POSITION)(
         pos, size, target, steps, callback);
   }
   return new_exit_pos(pos, size, target, steps, callback);
@@ -194,6 +197,19 @@ void manacost(byte id, byte c) {
   PATCH_SET((char *)(MANACOST + 2 * id), mana);
 }
 
+void repair_cat(bool b) {
+  // peon can repair unit if it have transport flag OR catapult flag
+  if (b) {
+    char r1[] = "\xeb\x75\x90\x90\x90";  // f6 c4 04 74 14
+    PATCH_SET((char *)REPAIR_FLAG_CHECK2, r1);
+    char r2[] = "\x66\xa9\x04\x04\x74\x9c\xeb\x86";
+    PATCH_SET((char *)REPAIR_CODE_CAVE, r2);
+  } else {
+    char r1[] = "\xf6\xc4\x04\x74\x14";
+    PATCH_SET((char *)REPAIR_FLAG_CHECK2, r1);
+  }
+}
+
 #define UNIT_SCORE_TABLE 0x004CF190
 void unitscore(byte id, short score) {
   // spells cost of mana
@@ -210,17 +226,59 @@ int load_game(int a) {
   return original;
 }
 
-void hook(int adr, PROC *p, char *func) { *p = patch_call((char *)adr, func); }
+void *def_name = NULL;
+void *def_sound = NULL;
+char ajmoo_name[] = "PEON2K\\ajmoo.wav\x0";
+void *ajmoo_sound = NULL;
+
+PROC g_proc_00442D74;
+void play_sound_bloodlust(int *u, int sound) {
+  byte id = *((byte *)((uintptr_t)u + S_ID));
+  if (id == U_PALADIN || id == U_KNIGHT) {
+    int sid = sound + 68;
+    def_name = (void *)*(int *)(SOUNDS_FILES_LIST + 8 + 24 * sid);
+    def_sound = (void *)*(int *)(SOUNDS_FILES_LIST + 16 + 24 * sid);
+    patch_setdword((DWORD *)(SOUNDS_FILES_LIST + 8 + 24 * sid),
+                   (DWORD)ajmoo_name);
+    patch_setdword((DWORD *)(SOUNDS_FILES_LIST + 16 + 24 * sid),
+                   (DWORD)ajmoo_sound);
+    ((void (*)(int *, int))g_proc_00442D74)(u, sound);
+    ajmoo_sound = (void *)*(int *)(SOUNDS_FILES_LIST + 16 + 24 * sid);
+    patch_setdword((DWORD *)(SOUNDS_FILES_LIST + 8 + 24 * sid),
+                   (DWORD)def_name);
+    patch_setdword((DWORD *)(SOUNDS_FILES_LIST + 16 + 24 * sid),
+                   (DWORD)def_sound);
+  } else {
+    ((void (*)(int *, int))g_proc_00442D74)(u, sound);
+  }
+}
+
+#include "gen/ajmoo.h"
+
+void patch_bloodlust_sound() {
+  FILE *fp;
+  DWORD dwAttrib = GetFileAttributes("PEON2K");
+  if (dwAttrib == INVALID_FILE_ATTRIBUTES) {
+    CreateDirectory("PEON2K", NULL);
+    if ((fp = fopen("PEON2K\\ajmoo.wav", "w+b")) != NULL) {
+      fwrite(ajmoo_wav, 1, ajmoo_wav_len, fp);
+      fclose(fp);
+    }
+  }
+  hook(0x00442D74, &g_proc_00442D74, (char *)play_sound_bloodlust);
+}
 
 extern "C" __declspec(dllexport) void w2p_init() {
   manacost(HEAL, 2);
   unitscore(U_PEASANT, 300);
   unitscore(U_PEON, 300);
   unitscore(U_CRITTER, 0);
+  repair_cat(true);
   patch_rune();
   patch_polymorph();
   patch_unholy();
   patch_critter_kills();
   hook(0x0041F7E4, &g_proc_0041F7E4, (char *)load_game);
   patch_unit_exit_building();
+  patch_bloodlust_sound();
 }

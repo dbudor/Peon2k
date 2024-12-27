@@ -21,4 +21,9 @@ $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	$(RM) $(OBJS) $(TARGET)
+	$(RM) $(OBJS) $(TARGET) gen/*
+
+peon2k.o: peon2k.cpp gen/ajmoo.h
+
+gen/ajmoo.h: ajmoo.wav
+	xxd -i $< > $@
