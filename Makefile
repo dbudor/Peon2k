@@ -8,7 +8,7 @@ CFLAGS       = -Iinc -O2 -march=i486 -Wall -masm=intel -Wno-pointer-sign
 CXXFLAGS     = -Iinc -O2 -march=i486 -Wall -masm=intel
 LIBS         = 
 
-OBJS = peon2k.o place_check.o
+OBJS = peon2k.o place_check.o dump.o
         
 NASM        ?= nasm
 
@@ -25,5 +25,16 @@ clean:
 
 peon2k.o: peon2k.cpp gen/ajmoo.h
 
+dump.o: dump.cpp
+
 gen/ajmoo.h: ajmoo.wav
 	xxd -i $< > $@
+
+defs.idc: defs.h
+	echo "#include <idc.idc>" > $@
+	echo "static main(void)" >> $@
+	echo "{" >> $@
+	cat $< | perl -ne 'if (/^#define (F_.*?) (0x.*?)\\s*(\/\/.*)?$$/) { printf("  MakeName(%s, \"%s\");\n", $$2, $$1); }' >> $@
+	echo "}" >> $@
+
+

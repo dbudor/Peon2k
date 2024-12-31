@@ -268,7 +268,10 @@ void patch_bloodlust_sound() {
   hook(0x00442D74, &g_proc_00442D74, (char *)play_sound_bloodlust);
 }
 
+extern void setup_dump(void);
+
 extern "C" __declspec(dllexport) void w2p_init() {
+  setup_dump();
   manacost(HEAL, 2);
   unitscore(U_PEASANT, 300);
   unitscore(U_PEON, 300);
