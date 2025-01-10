@@ -2,7 +2,7 @@
 // Created by Darko Budor on 24.12.2024..
 //
 
-typedef int (__cdecl *place_callback)(int *); 
+typedef int(__cdecl *place_callback)(int *);
 
 typedef union xpos {
   struct {
@@ -48,7 +48,6 @@ typedef union xpos {
 
 int x;
 
-
 int new_exit_pos(int *ipos, int isize, int itarget, int steps,
                  place_callback callback) {
   position *pos = (position *)ipos;
@@ -73,8 +72,10 @@ int new_exit_pos(int *ipos, int isize, int itarget, int steps,
   int bound_s = pos->c.y + size.c.y - 1;
 
   int dir;
-  if (absdx > absdy) {
-    pos->c.y = (center2_y + size.c.x * delta2_y / delta2_x) / 2;
+
+  if (absdx >= absdy) {
+    if (delta2_x != 0)
+      pos->c.y = (center2_y + size.c.x * delta2_y / delta2_x) / 2;
     if (delta2_x <= 0) {
       dir = W;
       pos->c.x = bound_w;
