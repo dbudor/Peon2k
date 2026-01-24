@@ -591,7 +591,7 @@ extern "C" __declspec(dllexport) void w2p_init() {
   patch_max_units();
 
 #ifdef PATCH_VISION  
-  manacost(VISION, 120);
+  manacost(VISION, 150);
   patch_vision(/*range*/4, /*ttl*/ 50, /*see allied invis*/true);
 #endif
 
