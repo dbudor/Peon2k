@@ -79,8 +79,8 @@ LONG WINAPI DumpExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo) {
   DWORD code = er->ExceptionCode;
 
   // Print the main exception code as a string:
-  fprintf(fp, "\n=== Crash Type: %s (0x%08lX) ===\n", ExceptionCodeToString(code),
-          code);
+  fprintf(fp, "\n=== Crash Type: %s (0x%08lX) ===\n",
+          ExceptionCodeToString(code), code);
 
   // Special handling for Access Violation, if you want more detail:
   if (code == EXCEPTION_ACCESS_VIOLATION) {
@@ -103,8 +103,8 @@ LONG WINAPI DumpExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo) {
                 (void*)faultAddr);
         break;
       default:
-        fprintf(fp,                "Access Violation: unknown type 0x%p, address=0x%p\n",
-                (void *)accessType, (void*)faultAddr);
+        fprintf(fp, "Access Violation: unknown type 0x%p, address=0x%p\n",
+                (void*)accessType, (void*)faultAddr);
         break;
     }
   }
