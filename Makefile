@@ -37,7 +37,7 @@ clean:
 peon2k.o: peon2k.cpp gen/ajmoo.h
 
 peon2kdebug.o: peon2k.cpp gen/ajmoo.h
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DDEBUG -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DDEBUG -DPATCH_VISION -c $< -o $@
 
 peon2kvision.o: peon2k.cpp gen/ajmoo.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DPATCH_VISION -c $< -o $@
