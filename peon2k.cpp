@@ -247,47 +247,6 @@ int inc_kills(int player, int* u) {
 typedef int(__cdecl* place_callback)(int*);
 #define PLACE_UNIT_POSITION 0x00443A40
 
-void unit_kill_inside_building(int* u) {
-  int* building = (int*)((uintptr_t)u + S_ORDER_UNIT_POINTER);
-  if (!building) {
-    log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "no building");
-    unit_kill(u);
-    return;
-  }
-  unsigned short hp = *((unsigned short*)((uintptr_t)building + S_HP));
-  if (hp == 0) {
-    log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "0 HP");
-    unit_kill(u);
-    return;
-  }
-  *(int*)(u + S_ORDER_UNIT_POINTER) = 0;
-  *(byte*)(u + S_ANIMATION_TIMER) = 1;
-  byte id = *((byte*)((uintptr_t)building + S_ID));
-  int loc = *((int*)((uintptr_t)building + S_X));
-  int size = *(int*)((uintptr_t)UNIT_SIZE_TABLE + 4 * id);
-  int target = *(int*)((uintptr_t)u + S_ORDER_X);
-  *(short*)0x4BE260 = *((byte*)((uintptr_t)u + 42)) & 0xff;
-  *(byte*)0x4BE270 = 0;
-  if (((int (*)(int*, int, int, int, place_callback))PLACE_UNIT_POSITION)(
-          &loc, size, target, 0xCu, (place_callback)0x4512A0)) {
-    int x = loc & 0xff;
-    int y = (loc >> 16) & 0xff;
-    *((byte*)((uintptr_t)u + S_FLAGS3)) &= ~8u;
-    *((short*)((uintptr_t)u + S_X)) = x;
-    *((short*)((uintptr_t)u + S_Y)) = y;
-    *((short*)((uintptr_t)u + S_DRAW_X)) = x * 32;
-    *((short*)((uintptr_t)u + S_DRAW_Y)) = y * 32;
-    ((int (*)(int*))F_UNIT_PLACE)(u);
-    *((byte*)((uintptr_t)u + S_SEQ_FLAG)) |= 0x20u;
-    *((byte*)((uintptr_t)u + S_FACE)) = ((int (*)(int*))0x429DF0)(u);
-    ((void (*)(int*, byte))0x453130)(u, 2);
-    log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "unit saved, shouldn't happen");
-    return;
-  }
-  log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "unit couldn't be placed, shouldn't happen");
-  unit_kill(u);
-}
-
 #define ORDER_FUNCTIONS_MOVE 0x00495EE4
 int fix_enter_dead_building(int* u) {
   log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "unit entering dead building");
@@ -325,7 +284,6 @@ int fix_enter_dead_building(int* u) {
 
 void patch_kills_score() {
   patch_ljmp((char*)0x0043D760, (char*)inc_kills);
-  patch_call((char*)0x00451716, (char*)unit_kill_inside_building);
   patch_call((char*)0x004246D0, (char*)fix_enter_dead_building);
   char o1[] = "\x90\x90\x90\x90\x90";
   PATCH_SET((char*)0x004246D8, o1);
@@ -592,7 +550,7 @@ extern "C" __declspec(dllexport) void w2p_init() {
 
 #ifdef PATCH_VISION  
   manacost(VISION, 150);
-  patch_vision(/*range*/4, /*ttl*/ 50, /*see allied invis*/true);
+  patch_vision(/*range*/4, /*ttl*/ 50, /*see allied invis*/false);
 #endif
 
 }
