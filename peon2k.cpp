@@ -113,8 +113,8 @@ void patch_rune() {
 }
 
 #define F_CRITTER_CREATE 0x00451B50  // x y critter flag
-void critter_create(WORD x, WORD y, byte id, byte f) {
-  ((int* (*)(WORD, WORD, byte, byte))F_CRITTER_CREATE)(x, y, id, f);
+int* critter_create(WORD x, WORD y, byte id, byte f) {
+  return ((int* (*)(WORD, WORD, byte, byte))F_CRITTER_CREATE)(x, y, id, f);
 }
 
 void polymorph_unit_kill(int* u, int* caster) {
@@ -254,7 +254,7 @@ int fix_enter_dead_building(int* u) {
   *((int*)((uintptr_t)u + S_PEON_GOLDMINE_POINTER)) = 0;
   *((byte*)((uintptr_t)u + S_PEON_FLAGS)) = 0;
   *((byte*)((uintptr_t)u + S_ORDER)) = ORDER_MOVE;
-  int fnp = *(int *)(ORDER_FUNCTIONS_MOVE);
+  int fnp = *(int*)(ORDER_FUNCTIONS_MOVE);
   int loc = *((int*)((uintptr_t)u + S_X));
   int size = 0x00040004;
   int target = *(int*)((uintptr_t)u + S_ORDER_X);
@@ -274,7 +274,7 @@ int fix_enter_dead_building(int* u) {
     *((byte*)((uintptr_t)u + S_FACE)) = ((int (*)(int*))0x429DF0)(u);
     ((void (*)(int*, byte))0x453130)(u, 2);
     log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "saved");
-    return ((int (*)(int *))fnp)(u);
+    return ((int (*)(int*))fnp)(u);
   } else {
     log(*((byte*)((uintptr_t)u + S_OWNER)), "%s", "sorry");
     ((void (*)(int*))F_UNIT_KILL)(u);
@@ -499,12 +499,6 @@ int load_game(int a) {
   return original;
 }
 
-PROC g_proc_0045271B;
-void game_tick() {
-  ((void (*)())g_proc_0045271B)();  // original
-  expire_visions();
-}
-
 void patch_vision(int range, int ttl, bool see_ally) {
   vision_range_sq = range * range;
   vision_ttl = ttl;
@@ -523,8 +517,105 @@ void patch_vision(int range, int ttl, bool see_ally) {
       "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
       "\x90\x90\x90\x90\x90\x90\x90";
   PATCH_SET((char*)0x004425B2, o2);
+}
 
-  hook(0x0045271B, &g_proc_0045271B, (char*)game_tick);
+PROC g_proc_0041856C;
+int unit_damaged(int* u) {
+  byte flags3 = *((byte*)((uintptr_t)u + S_FLAGS3));
+  byte id = *((byte*)((uintptr_t)u + S_ID));
+  int* target = (int*)*(int*)((uintptr_t)u + S_ORDER_UNIT_POINTER);
+  if ((flags3 & (SF_UNIT_FREE | SF_DIEING | SF_DEAD | SF_HIDDEN)) == 0 &&
+      (id == U_HTANKER || id == U_OTANKER) && !target) {
+    bool has_oil = *((byte*)((uintptr_t)u + S_PEON_FLAGS)) & PEON_LOADED;
+    unsigned short hp = *((unsigned short*)((uintptr_t)u + S_HP));
+    bool has_damage = hp <= (*(WORD*)(UNIT_HP_TABLE + 2 * id)) * 3 / 4;
+    byte chops = *((byte*)((uintptr_t)u + S_PEON_TREE_CHOPS));
+    if (has_oil && has_damage && !chops) {
+      *((byte*)((uintptr_t)u + S_PEON_TREE_CHOPS)) = 1;
+      int x = (*((short*)((uintptr_t)u + S_X)) + 4) * 32;
+      int y = (*((short*)((uintptr_t)u + S_Y)) - 4) * 32;
+      int* demon = critter_create(x, y, U_DEMON, 0x0f);
+      *((byte*)((uintptr_t)demon + S_PEON_TREE_CHOPS)) = 120;
+      *(int*)((uintptr_t)demon + S_ORDER_UNIT_POINTER) = (int)u;
+      *(unsigned short*)((uintptr_t)u + S_NEXT_FIRE) = 1000;
+      ((void (*)(int*))0x410B30)(demon);
+    }
+  }
+  return ((int (*)(int*))g_proc_0041856C)(u);
+}
+
+#define sub_40AF00(n, u, x, y) \
+  ((void (*)(int, int*, int, int))0x40AF00)((n), (u), (x), (y))
+
+int tanker_kaboom(int* u) {
+  int x = *((short*)((uintptr_t)u + S_X));
+  int y = *((short*)((uintptr_t)u + S_Y));
+  sub_40AF00(0, u, x + 2, y + 2);
+  sub_40AF00(1, u, x - 2, y + 2);
+  sub_40AF00(2, u, x + 2, y - 2);
+  sub_40AF00(3, u, x - 2, y - 2);
+  sub_40AF00(4, u, x, y + 2);
+  sub_40AF00(5, u, x, y - 2);
+  sub_40AF00(6, u, x + 2, y);
+  sub_40AF00(7, u, x - 2, y);
+  unit_kill(u);
+  ((void (*)(int, int))0x422F60)(x, y);
+  return 1;
+}
+
+int burn_tankers() {
+  int* p = (int*)UNITS_MASSIVE;  // pointer to units
+  p = (int*)(*p);
+  int k = *(int*)UNITS_NUMBER;
+  while (k > 0) {
+    byte flags3 = *((byte*)((uintptr_t)p + S_FLAGS3));
+    byte id = *((byte*)((uintptr_t)p + S_ID));
+    if ((flags3 & (SF_UNIT_FREE | SF_DIEING | SF_DEAD)) == 0) {
+      if (id == U_HTANKER || id == U_OTANKER) {
+        if (flags3 & SF_HIDDEN) {
+          *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS)) = 0;
+        } else {
+          unsigned short hp = *((unsigned short*)((uintptr_t)p + S_HP));
+          byte chops = *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS));
+          if (chops) {
+            if (++chops >= 10) {
+              chops = 1;
+              hp--;
+            }
+            if (hp <= 0) {
+              *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS)) = 0;
+              tanker_kaboom(p);
+            } else {
+              *((unsigned short*)((uintptr_t)p + S_HP)) = hp;
+              *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS)) = chops;
+            }
+          }
+        }
+      } else if (id == U_DEMON) {
+        byte chops = *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS));
+        if (chops > 0) {
+          *((byte*)((uintptr_t)p + S_PEON_TREE_CHOPS)) = --chops;
+          if (!chops) unit_kill(p);
+        }
+      }
+    }
+    p = (int*)((int)p + 0x98);
+    k--;
+  }
+  return 0;
+}
+
+void patch_offensive_tankers() {
+  hook(0x0041856C, &g_proc_0041856C, (char*)unit_damaged);
+}
+
+PROC g_proc_0045271B;
+void game_tick() {
+  ((void (*)())g_proc_0045271B)();  // original
+#ifdef PATCH_VISION
+  expire_visions();
+#endif
+  burn_tankers();
 }
 
 extern void setup_dump(void);
@@ -548,9 +639,11 @@ extern "C" __declspec(dllexport) void w2p_init() {
   patch_bloodlust_sound();
   patch_max_units();
 
-#ifdef PATCH_VISION  
+#ifdef PATCH_VISION
   manacost(VISION, 150);
-  patch_vision(/*range*/4, /*ttl*/ 50, /*see allied invis*/false);
+  patch_vision(/*range*/ 4, /*ttl*/ 50, /*see allied invis*/ false);
 #endif
 
+  patch_offensive_tankers();
+  hook(0x0045271B, &g_proc_0045271B, (char*)game_tick);
 }
