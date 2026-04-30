@@ -112,6 +112,14 @@ void patch_rune() {
   patch_call((char*)0x00442457, (char*)rune_unit_hit);
 }
 
+void patch_heal_max_hp(int max) {
+  char o1[2];
+  short s = (short)max;
+  memcpy(o1, &s, sizeof(s));
+  PATCH_SET((char*)0x00442656, o1);
+  PATCH_SET((char*)0x0044265B, o1);
+}
+
 #define F_CRITTER_CREATE 0x00451B50  // x y critter flag
 int* critter_create(WORD x, WORD y, byte id, byte f) {
   return ((int* (*)(WORD, WORD, byte, byte))F_CRITTER_CREATE)(x, y, id, f);
@@ -609,6 +617,87 @@ void patch_offensive_tankers() {
   hook(0x0041856C, &g_proc_0041856C, (char*)unit_damaged);
 }
 
+struct unit_cost {
+  bool changed;
+  short gold;
+  short wood;
+  short oil;
+};
+
+struct unit_cost unit_cost_overrides[112];
+
+void override_unit_cost(int u, int gold, int wood, int oil) {
+  unit_cost_overrides[u].changed = true;
+  unit_cost_overrides[u].gold = gold;
+  unit_cost_overrides[u].wood = wood;
+  unit_cost_overrides[u].oil = oil;
+}
+
+#define F_SHOW_PRICE 0x0044C730
+#define F_NOT_ENOUGH 0x0044A650
+#define RCOST_OIL ((int*)0x004AD410)
+#define RCOST_GOLD ((int*)0x004AD414)
+#define RCOST_TIME ((short*)0x004AD41C)
+#define RCOST_LUMBER ((int*)0x004AD420)
+
+int check_resources(int unit, unsigned char id) {
+  int player = (int)*((byte*)((uintptr_t)unit + S_OWNER));
+
+  int gold_cost, lumber_cost, oil_cost;
+  if (id < 112 && unit_cost_overrides[id].changed) {
+    gold_cost = unit_cost_overrides[id].gold;
+    lumber_cost = unit_cost_overrides[id].wood;
+    oil_cost = unit_cost_overrides[id].oil;
+  } else {
+    gold_cost = 10 * ((byte*)UNIT_GOLD_TABLE)[id];
+    lumber_cost = 10 * ((byte*)UNIT_LUMBER_TABLE)[id];
+    oil_cost = 10 * ((byte*)UNIT_OIL_TABLE)[id];
+  }
+
+  *RCOST_TIME = 2 * ((byte*)UNIT_TIME_TABLE)[id];
+  *RCOST_GOLD = gold_cost;
+  *RCOST_LUMBER = lumber_cost;
+  *RCOST_OIL = oil_cost;
+
+  if (id < 0x3A) {
+    int food_cap = ((short*)FOOD_LIMIT)[player];
+    if ((bool)*((byte*)NETWORK_MODE) && food_cap > 200) food_cap = 200;
+    if (food_cap <= ((int*)ALL_UNITS)[player] - ((short*)NPC)[player])
+      return ((int (*)(int))F_NOT_ENOUGH)(438);
+  }
+  if (((int*)GOLD)[player] < gold_cost)
+    return ((int (*)(int))F_NOT_ENOUGH)(439);
+  if (((int*)LUMBER)[player] < lumber_cost)
+    return ((int (*)(int))F_NOT_ENOUGH)(440);
+  if (((int*)OIL)[player] < oil_cost) return ((int (*)(int))F_NOT_ENOUGH)(441);
+  return 0;
+}
+
+int show_unit_price(int id) {
+  int gold, lumber, oil;
+  if (id < 112 && unit_cost_overrides[id].changed) {
+    gold = unit_cost_overrides[id].gold;
+    lumber = unit_cost_overrides[id].wood;
+    oil = unit_cost_overrides[id].oil;
+  } else {
+    gold = 10 * ((byte*)UNIT_GOLD_TABLE)[id];
+    lumber = 10 * ((byte*)UNIT_LUMBER_TABLE)[id];
+    oil = 10 * ((byte*)UNIT_OIL_TABLE)[id];
+  }
+  return ((int (*)(int, int, int))F_SHOW_PRICE)(gold, lumber, oil);
+}
+
+void patch_unit_prices() {
+  memset(unit_cost_overrides, 0, sizeof(unit_cost_overrides));
+  patch_ljmp((char*)0x0040DCD4, (char*)check_resources);
+  char o1[] =
+      "\x50\xE8\xBA\x18\x00\x00\x58\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
+      "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
+      "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90";
+  PATCH_SET((char*)0x0044AE70, o1);
+  patch_call((char*)0x0044AE71, (char*)show_unit_price);
+}
+
 PROC g_proc_0045271B;
 void game_tick() {
   ((void (*)())g_proc_0045271B)();  // original
@@ -623,8 +712,9 @@ extern void setup_dump(void);
 extern "C" __declspec(dllexport) void w2p_init() {
   setup_dump();
   manacost(HEAL, 2);
-  unitscore(U_PEASANT, 300);
-  unitscore(U_PEON, 300);
+  patch_heal_max_hp(255);
+  unitscore(U_PEASANT, 1500);
+  unitscore(U_PEON, 1500);
   unitscore(U_CRITTER, 0);
   repair_cat(true);
   patch_rune();
@@ -641,9 +731,13 @@ extern "C" __declspec(dllexport) void w2p_init() {
 
 #ifdef PATCH_VISION
   manacost(VISION, 150);
-  patch_vision(/*range*/ 4, /*ttl*/ 50, /*see allied invis*/ false);
+  patch_vision(/*range*/ 4, /*ttl*/ 50, /*see allied invis*/ 0);
 #endif
 
   patch_offensive_tankers();
   hook(0x0045271B, &g_proc_0045271B, (char*)game_tick);
+
+  patch_unit_prices();
+  override_unit_cost(U_PEASANT, 3500, 1500, 1000);
+  override_unit_cost(U_PEON, 3500, 1500, 1000);
 }
